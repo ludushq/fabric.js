@@ -4,12 +4,56 @@
       atan2 = Math.atan2,
       pow = Math.pow,
       abs = Math.abs,
-      PiBy180 = Math.PI / 180;
+      PiBy180 = Math.PI / 180,
+      PiBy2 = Math.PI / 2;
 
   /**
    * @namespace fabric.util
    */
   fabric.util = {
+
+    /**
+     * Calculate the cos of an angle, avoiding returning floats for known results
+     * @static
+     * @memberOf fabric.util
+     * @param {Number} angle the angle in radians or in degree
+     * @return {Number}
+     */
+    cos: function(angle) {
+      if (angle === 0) { return 1; }
+      if (angle < 0) {
+        // cos(a) = cos(-a)
+        angle = -angle;
+      }
+      var angleSlice = angle / PiBy2;
+      switch (angleSlice) {
+        case 1: case 3: return 0;
+        case 2: return -1;
+      }
+      return Math.cos(angle);
+    },
+
+    /**
+     * Calculate the sin of an angle, avoiding returning floats for known results
+     * @static
+     * @memberOf fabric.util
+     * @param {Number} angle the angle in radians or in degree
+     * @return {Number}
+     */
+    sin: function(angle) {
+      if (angle === 0) { return 0; }
+      var angleSlice = angle / PiBy2, sign = 1;
+      if (angle < 0) {
+        // sin(-a) = -sin(a)
+        sign = -1;
+      }
+      switch (angleSlice) {
+        case 1: return sign;
+        case 2: return 0;
+        case 3: return -sign;
+      }
+      return Math.sin(angle);
+    },
 
     /**
      * Removes value from an array.
@@ -86,8 +130,8 @@
      * @return {Object} The new rotated point
      */
     rotateVector: function(vector, radians) {
-      var sin = Math.sin(radians),
-          cos = Math.cos(radians),
+      var sin = fabric.util.sin(radians),
+          cos = fabric.util.cos(radians),
           rx = vector.x * cos - vector.y * sin,
           ry = vector.x * sin + vector.y * cos;
       return {
@@ -447,7 +491,7 @@
      */
     groupSVGElements: function(elements, options, path) {
       var object;
-      if (elements.length === 1) {
+      if (elements && elements.length === 1) {
         return elements[0];
       }
       if (options) {
@@ -538,6 +582,34 @@
     },
 
     /**
+     * Creates a canvas element that is a copy of another and is also painted
+     * @param {CanvasElement} canvas to copy size and content of
+     * @static
+     * @memberOf fabric.util
+     * @return {CanvasElement} initialized canvas element
+     */
+    copyCanvasElement: function(canvas) {
+      var newCanvas = fabric.util.createCanvasElement();
+      newCanvas.width = canvas.width;
+      newCanvas.height = canvas.height;
+      newCanvas.getContext('2d').drawImage(canvas, 0, 0);
+      return newCanvas;
+    },
+
+    /**
+     * since 2.6.0 moved from canvas instance to utility.
+     * @param {CanvasElement} canvasEl to copy size and content of
+     * @param {String} format 'jpeg' or 'png', in some browsers 'webp' is ok too
+     * @param {Number} quality <= 1 and > 0
+     * @static
+     * @memberOf fabric.util
+     * @return {String} data url
+     */
+    toDataURL: function(canvasEl, format, quality) {
+      return canvasEl.toDataURL('image/' + format, quality);
+    },
+
+    /**
      * Creates image element (works on client and node)
      * @static
      * @memberOf fabric.util
@@ -612,6 +684,12 @@
       return fabric.util.multiplyTransformMatrices(scaleMatrix, skewMatrixX, true);
     },
 
+    /**
+     * reset an object transform state to neutral. Top and left are not accounted for
+     * @static
+     * @memberOf fabric.util
+     * @param  {fabric.Object} target object to transform
+     */
     resetObjectTransform: function (target) {
       target.scaleX = 1;
       target.scaleY = 1;
@@ -620,6 +698,27 @@
       target.flipX = false;
       target.flipY = false;
       target.rotate(0);
+    },
+
+    /**
+     * Extract Object transform values
+     * @static
+     * @memberOf fabric.util
+     * @param  {fabric.Object} target object to read from
+     * @return {Object} Components of transform
+     */
+    saveObjectTransform: function (target) {
+      return {
+        scaleX: target.scaleX,
+        scaleY: target.scaleY,
+        skewX: target.skewX,
+        skewY: target.skewY,
+        angle: target.angle,
+        left: target.left,
+        flipX: target.flipX,
+        flipY: target.flipY,
+        top: target.top
+      };
     },
 
     /**
@@ -706,11 +805,19 @@
     },
 
     /**
-     * Clear char widths cache for a font family.
+     * Clear char widths cache for the given font family or all the cache if no
+     * fontFamily is specified.
+     * Use it if you know you are loading fonts in a lazy way and you are not waiting
+     * for custom fonts to load properly when adding text objects to the canvas.
+     * If a text object is added when its own font is not loaded yet, you will get wrong
+     * measurement and so wrong bounding boxes.
+     * After the font cache is cleared, either change the textObject text content or call
+     * initDimensions() to trigger a recalculation
      * @memberOf fabric.util
      * @param {String} [fontFamily] font family to clear
      */
     clearFabricFontCache: function(fontFamily) {
+      fontFamily = (fontFamily || '').toLowerCase();
       if (!fontFamily) {
         fabric.charWidthsCache = { };
       }
@@ -720,7 +827,8 @@
     },
 
     /**
-     * Clear char widths cache for a font family.
+     * Given current aspect ratio, determines the max width and height that can
+     * respect the total allowed area for the cache.
      * @memberOf fabric.util
      * @param {Number} ar aspect ratio
      * @param {Number} maximumArea Maximum area you want to achieve

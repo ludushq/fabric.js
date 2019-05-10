@@ -101,8 +101,8 @@
      */
     retrieveShader: function(options) {
       var cacheKey = this.type + '_' + this.mode;
-      var shaderSource = this.fragmentSource[this.mode];
       if (!options.programCache.hasOwnProperty(cacheKey)) {
+        var shaderSource = this.fragmentSource[this.mode];
         options.programCache[cacheKey] = this.createProgram(options.context, shaderSource);
       }
       return options.programCache[cacheKey];
@@ -130,6 +130,15 @@
       // default average mode.
       var mode = 1;
       gl.uniform1i(uniformLocations.uMode, mode);
+    },
+
+    /**
+     * Grayscale filter isNeutralState implementation
+     * The filter is never neutral
+     * on the image
+     **/
+    isNeutralState: function() {
+      return false;
     },
   });
 

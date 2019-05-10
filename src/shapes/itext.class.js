@@ -255,7 +255,6 @@
      */
     _render: function(ctx) {
       this.callSuper('_render', ctx);
-      this.ctx = ctx;
     },
 
     /**
@@ -280,7 +279,7 @@
      * Renders cursor or selection (depending on what exists)
      */
     renderCursorOrSelection: function() {
-      if (!this.isEditing) {
+      if (!this.isEditing || !this.canvas) {
         return;
       }
       var boundaries = this._getCursorBoundaries(), ctx;
@@ -289,7 +288,7 @@
         this.clearContextTop(true);
       }
       else {
-        ctx = this.ctx;
+        ctx = this.canvas.contextContainer;
         ctx.save();
       }
       if (this.selectionStart === this.selectionEnd) {
@@ -342,18 +341,19 @@
         return this.cursorOffsetCache;
       }
       var lineLeftOffset,
-          lineIndex = 0,
-          charIndex = 0,
+          lineIndex,
+          charIndex,
           topOffset = 0,
           leftOffset = 0,
           boundaries,
           cursorPosition = this.get2DCursorLocation(position);
-      for (var i = 0; i < cursorPosition.lineIndex; i++) {
+      charIndex = cursorPosition.charIndex;
+      lineIndex = cursorPosition.lineIndex;
+      for (var i = 0; i < lineIndex; i++) {
         topOffset += this.getHeightOfLine(i);
       }
-
-      lineLeftOffset = this._getLineLeftOffset(cursorPosition.lineIndex);
-      var bound = this.__charBounds[cursorPosition.lineIndex][cursorPosition.charIndex];
+      lineLeftOffset = this._getLineLeftOffset(lineIndex);
+      var bound = this.__charBounds[lineIndex][charIndex];
       bound && (leftOffset = bound.left);
       if (this.charSpacing !== 0 && charIndex === this._textLines[lineIndex].length) {
         leftOffset -= this._getWidthOfCharSpacing();
@@ -378,7 +378,8 @@
           charHeight = this.getValueOfPropertyAt(lineIndex, charIndex, 'fontSize'),
           multiplier = this.scaleX * this.canvas.getZoom(),
           cursorWidth = this.cursorWidth / multiplier,
-          topOffset = boundaries.topOffset;
+          topOffset = boundaries.topOffset,
+          dy = this.getValueOfPropertyAt(lineIndex, charIndex, 'deltaY');
 
       topOffset += (1 - this._fontSizeFraction) * this.getHeightOfLine(lineIndex) / this.lineHeight
         - charHeight * (1 - this._fontSizeFraction);
@@ -391,7 +392,7 @@
       ctx.globalAlpha = this.__isMousedown ? 1 : this._currentCursorOpacity;
       ctx.fillRect(
         boundaries.left + boundaries.leftOffset - cursorWidth / 2,
-        topOffset + boundaries.top,
+        topOffset + boundaries.top + dy,
         cursorWidth,
         charHeight);
     },
@@ -429,7 +430,9 @@
             boxEnd = this.__charBounds[endLine][endChar].left;
           }
           else {
-            boxEnd = this.__charBounds[endLine][endChar - 1].left + this.__charBounds[endLine][endChar - 1].width;
+            var charSpacing = this._getWidthOfCharSpacing();
+            boxEnd = this.__charBounds[endLine][endChar - 1].left
+              + this.__charBounds[endLine][endChar - 1].width - charSpacing;
           }
         }
         realLineHeight = lineHeight;

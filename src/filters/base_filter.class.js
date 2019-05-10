@@ -4,6 +4,7 @@
  * @tutorial {@link http://fabricjs.com/fabric-intro-part-2#image_filters}
  * @see {@link http://fabricjs.com/image-filters|ImageFilters demo}
  */
+fabric.Image = fabric.Image || { };
 fabric.Image.filters = fabric.Image.filters || { };
 
 /**
@@ -67,6 +68,8 @@ fabric.Image.filters.BaseFilter = fabric.util.createClass(/** @lends fabric.Imag
    * @param {String} vertexSource vertexShader source for compilation
    */
   createProgram: function(gl, fragmentSource, vertexSource) {
+    fragmentSource = fragmentSource || this.fragmentSource;
+    vertexSource = vertexSource || this.vertexSource;
     if (fabric.webGlPrecision !== 'highp'){
       fragmentSource = fragmentSource.replace(
         /precision highp float/g,
@@ -74,23 +77,23 @@ fabric.Image.filters.BaseFilter = fabric.util.createClass(/** @lends fabric.Imag
       );
     }
     var vertexShader = gl.createShader(gl.VERTEX_SHADER);
-    gl.shaderSource(vertexShader, vertexSource || this.vertexSource);
+    gl.shaderSource(vertexShader, vertexSource);
     gl.compileShader(vertexShader);
     if (!gl.getShaderParameter(vertexShader, gl.COMPILE_STATUS)) {
       throw new Error(
         // eslint-disable-next-line prefer-template
-        'Vertex shader compile error for "${this.type}": ' +
+        'Vertex shader compile error for ' + this.type + ': ' +
         gl.getShaderInfoLog(vertexShader)
       );
     }
 
     var fragmentShader = gl.createShader(gl.FRAGMENT_SHADER);
-    gl.shaderSource(fragmentShader, fragmentSource || this.fragmentSource);
+    gl.shaderSource(fragmentShader, fragmentSource);
     gl.compileShader(fragmentShader);
     if (!gl.getShaderParameter(fragmentShader, gl.COMPILE_STATUS)) {
       throw new Error(
         // eslint-disable-next-line prefer-template
-        'Fragment shader compile error for "${this.type}": ' +
+        'Fragment shader compile error for ' + this.type + ': ' +
         gl.getShaderInfoLog(fragmentShader)
       );
     }
@@ -152,7 +155,7 @@ fabric.Image.filters.BaseFilter = fabric.util.createClass(/** @lends fabric.Imag
    * @param {Object} attributeLocations A map of shader attribute names to their locations.
    */
   sendAttributeData: function(gl, attributeLocations, aPositionData) {
-    var attributeLocation = attributeLocations.aPostion;
+    var attributeLocation = attributeLocations.aPosition;
     var buffer = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
     gl.enableVertexAttribArray(attributeLocation);
@@ -188,11 +191,31 @@ fabric.Image.filters.BaseFilter = fabric.util.createClass(/** @lends fabric.Imag
   },
 
   /**
-   * Intentionally left blank, to be overridden in custom filters
+   * Generic isNeutral implementation for one parameter based filters.
+   * Used only in image applyFilters to discard filters that will not have an effect
+   * on the image
+   * Other filters may need their own verison ( ColorMatrix, HueRotation, gamma, ComposedFilter )
    * @param {Object} options
    **/
   isNeutralState: function(/* options */) {
-    return false;
+    var main = this.mainParameter,
+        _class = fabric.Image.filters[this.type].prototype;
+    if (main) {
+      if (Array.isArray(_class[main])) {
+        for (var i = _class[main].length; i--;) {
+          if (this[main][i] !== _class[main][i]) {
+            return false;
+          }
+        }
+        return true;
+      }
+      else {
+        return _class[main] === this[main];
+      }
+    }
+    else {
+      return false;
+    }
   },
 
   /**
@@ -210,15 +233,11 @@ fabric.Image.filters.BaseFilter = fabric.util.createClass(/** @lends fabric.Imag
    */
   applyTo: function(options) {
     if (options.webgl) {
-      if (options.passes > 1 && this.isNeutralState(options)) {
-        // avoid doing something that we do not need
-        return;
-      }
       this._setupFrameBuffer(options);
       this.applyToWebGL(options);
       this._swapTextures(options);
     }
-    else if (!this.isNeutralState()) {
+    else {
       this.applyTo2d(options);
     }
   },

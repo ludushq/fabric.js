@@ -13,14 +13,6 @@
     return;
   }
 
-  var cacheProperties = fabric.Object.prototype.cacheProperties.concat();
-  cacheProperties.push(
-    'x1',
-    'x2',
-    'y1',
-    'y2'
-  );
-
   /**
    * Line class
    * @class fabric.Line
@@ -64,7 +56,7 @@
      */
     y2: 0,
 
-    cacheProperties: cacheProperties,
+    cacheProperties: fabric.Object.prototype.cacheProperties.concat('x1', 'x2', 'y1', 'y2'),
 
     /**
      * Constructor
@@ -255,26 +247,20 @@
 
     /* _TO_SVG_START_ */
     /**
-     * Returns SVG representation of an instance
-     * @param {Function} [reviver] Method for further parsing of svg representation.
-     * @return {String} svg representation of an instance
+     * Returns svg representation of an instance
+     * @return {Array} an array of strings with the specific svg representation
+     * of the instance
      */
-    toSVG: function(reviver) {
-      var markup = this._createBaseSVGMarkup(),
-          p = this.calcLinePoints();
-      markup.push(
-        '<line ', this.getSvgId(),
+    _toSVG: function() {
+      var p = this.calcLinePoints();
+      return [
+        '<line ', 'COMMON_PARTS',
         'x1="', p.x1,
         '" y1="', p.y1,
         '" x2="', p.x2,
         '" y2="', p.y2,
-        '" style="', this.getSvgStyles(),
-        '" transform="', this.getSvgTransform(),
-        this.getSvgTransformMatrix(),
-        '"/>\n'
-      );
-
-      return reviver ? reviver(markup.join('')) : markup.join('');
+        '" />\n'
+      ];
     },
     /* _TO_SVG_END_ */
   });

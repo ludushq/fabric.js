@@ -12,9 +12,11 @@ fabric.util.object.extend(fabric.IText.prototype, /** @lends fabric.IText.protot
     this.hiddenTextarea.setAttribute('data-fabric-hiddentextarea', '');
     this.hiddenTextarea.setAttribute('wrap', 'off');
     var style = this._calcTextareaPosition();
+    // line-height: 1px; was removed from the style to fix this:
+    // https://bugs.chromium.org/p/chromium/issues/detail?id=870966
     this.hiddenTextarea.style.cssText = 'position: absolute; top: ' + style.top +
     '; left: ' + style.left + '; z-index: -999; opacity: 0; width: 1px; height: 1px; font-size: 1px;' +
-    ' line-height: 1px; paddingｰtop: ' + style.fontSize + ';';
+    ' paddingｰtop: ' + style.fontSize + ';';
     fabric.document.body.appendChild(this.hiddenTextarea);
 
     fabric.util.addListener(this.hiddenTextarea, 'keydown', this.onKeyDown.bind(this));
@@ -189,7 +191,7 @@ fabric.util.object.extend(fabric.IText.prototype, /** @lends fabric.IText.protot
       }
     }
     if (insertedText.length) {
-      if (fromPaste && insertedText.join('') === fabric.copiedText) {
+      if (fromPaste && insertedText.join('') === fabric.copiedText && !fabric.disableStyleCopyPaste) {
         this.insertNewStyleBlock(insertedText, this.selectionStart, fabric.copiedTextStyle);
       }
       else {
@@ -237,7 +239,12 @@ fabric.util.object.extend(fabric.IText.prototype, /** @lends fabric.IText.protot
     }
 
     fabric.copiedText = this.getSelectedText();
-    fabric.copiedTextStyle = this.getSelectionStyles(this.selectionStart, this.selectionEnd, true);
+    if (!fabric.disableStyleCopyPaste) {
+      fabric.copiedTextStyle = this.getSelectionStyles(this.selectionStart, this.selectionEnd, true);
+    }
+    else {
+      fabric.copiedTextStyle = null;
+    }
     this._copyDone = true;
   },
 
@@ -294,7 +301,7 @@ fabric.util.object.extend(fabric.IText.prototype, /** @lends fabric.IText.protot
         widthBeforeCursor = this._getWidthBeforeCursor(lineIndex, charIndex),
         indexOnOtherLine = this._getIndexOnLine(lineIndex + 1, widthBeforeCursor),
         textAfterCursor = this._textLines[lineIndex].slice(charIndex);
-    return textAfterCursor.length + indexOnOtherLine + 2;
+    return textAfterCursor.length + indexOnOtherLine + 1 + this.missingNewlineOffset(lineIndex);
   },
 
   /**
@@ -329,9 +336,11 @@ fabric.util.object.extend(fabric.IText.prototype, /** @lends fabric.IText.protot
     var charIndex = cursorLocation.charIndex,
         widthBeforeCursor = this._getWidthBeforeCursor(lineIndex, charIndex),
         indexOnOtherLine = this._getIndexOnLine(lineIndex - 1, widthBeforeCursor),
-        textBeforeCursor = this._textLines[lineIndex].slice(0, charIndex);
+        textBeforeCursor = this._textLines[lineIndex].slice(0, charIndex),
+        missingNewlineOffset = this.missingNewlineOffset(lineIndex - 1);
     // return a negative offset
-    return -this._textLines[lineIndex - 1].length + indexOnOtherLine - textBeforeCursor.length;
+    return -this._textLines[lineIndex - 1].length
+     + indexOnOtherLine - textBeforeCursor.length + (1 - missingNewlineOffset);
   },
 
   /**
@@ -591,55 +600,56 @@ fabric.util.object.extend(fabric.IText.prototype, /** @lends fabric.IText.protot
   },
 
   /**
-   * Removes characters selected by selection
-   * @param {Event} e Event object
+   * Removes characters from start/end
+   * start/end ar per grapheme position in _text array.
+   *
+   * @param {Number} start
+   * @param {Number} end default to start + 1
    */
-  removeChars: function(e) {
-    if (this.selectionStart === this.selectionEnd) {
-      this._removeCharsNearCursor(e);
+  removeChars: function(start, end) {
+    if (typeof end === 'undefined') {
+      end = start + 1;
     }
-    else {
-      this._removeCharsFromTo(this.selectionStart, this.selectionEnd);
-    }
-
+    this.removeStyleFromTo(start, end);
+    this._text.splice(start, end - start);
+    this.text = this._text.join('');
     this.set('dirty', true);
-    this.setSelectionEnd(this.selectionStart);
-
-    this._removeExtraneousStyles();
     if (this._shouldClearDimensionCache()) {
       this.initDimensions();
       this.setCoords();
     }
-    this.canvas && this.canvas.requestRenderAll();
-    this.fire('changed');
-    this.canvas && this.canvas.fire('text:changed', { target: this });
+    this._removeExtraneousStyles();
   },
 
   /**
-   * @private
-   * @param {Event} e Event object
+   * insert characters at start position, before start position.
+   * start  equal 1 it means the text get inserted between actual grapheme 0 and 1
+   * if style array is provided, it must be as the same length of text in graphemes
+   * if end is provided and is bigger than start, old text is replaced.
+   * start/end ar per grapheme position in _text array.
+   *
+   * @param {String} text text to insert
+   * @param {Array} style array of style objects
+   * @param {Number} start
+   * @param {Number} end default to start + 1
    */
-  _removeCharsNearCursor: function(e) {
-    if (this.selectionStart === 0) {
-      return;
+  insertChars: function(text, style, start, end) {
+    if (typeof end === 'undefined') {
+      end = start;
     }
-    if (e.metaKey) {
-      // remove all till the start of current line
-      var leftLineBoundary = this.findLineBoundaryLeft(this.selectionStart);
+    if (end > start) {
+      this.removeStyleFromTo(start, end);
+    }
+    var graphemes = fabric.util.string.graphemeSplit(text);
+    this.insertNewStyleBlock(graphemes, start, style);
+    this._text = [].concat(this._text.slice(0, start), graphemes, this._text.slice(end));
+    this.text = this._text.join('');
+    this.set('dirty', true);
+    if (this._shouldClearDimensionCache()) {
+      this.initDimensions();
+      this.setCoords();
+    }
+    this._removeExtraneousStyles();
+  },
 
-      this._removeCharsFromTo(leftLineBoundary, this.selectionStart);
-      this.setSelectionStart(leftLineBoundary);
-    }
-    else if (e.altKey) {
-      // remove all till the start of current word
-      var leftWordBoundary = this.findWordBoundaryLeft(this.selectionStart);
-
-      this._removeCharsFromTo(leftWordBoundary, this.selectionStart);
-      this.setSelectionStart(leftWordBoundary);
-    }
-    else {
-      this._removeSingleCharAndStyle(this.selectionStart);
-      this.setSelectionStart(this.selectionStart - 1);
-    }
-  }
 });

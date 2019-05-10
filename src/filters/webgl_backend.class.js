@@ -2,7 +2,6 @@
 
   'use strict';
 
-
   /**
    * Tests if webgl supports certain precision
    * @param {WebGL} Canvas WebGL context to test on
@@ -93,8 +92,7 @@
      * putImageData is faster than drawImage for that specific operation.
      */
     chooseFastestCopyGLTo2DMethod: function(width, height) {
-      var canMeasurePerf = typeof window.performance !== 'undefined';
-      var canUseImageData;
+      var canMeasurePerf = typeof window.performance !== 'undefined', canUseImageData;
       try {
         new ImageData(1, 1);
         canUseImageData = true;
@@ -114,6 +112,11 @@
       var targetCanvas = fabric.util.createCanvasElement();
       // eslint-disable-next-line no-undef
       var imageBuffer = new ArrayBuffer(width * height * 4);
+      if (fabric.forceGLPutImageData) {
+        this.imageBuffer = imageBuffer;
+        this.copyGLTo2D = copyGLTo2DPutImageData;
+        return;
+      }
       var testContext = {
         imageBuffer: imageBuffer,
         destinationWidth: width,
@@ -149,7 +152,13 @@
       var canvas = fabric.util.createCanvasElement();
       canvas.width = width;
       canvas.height = height;
-      var glOptions = { premultipliedAlpha: false },
+      var glOptions = {
+            alpha: true,
+            premultipliedAlpha: false,
+            depth: false,
+            stencil: false,
+            antialias: false
+          },
           gl = canvas.getContext('webgl', glOptions);
       if (!gl) {
         gl = canvas.getContext('experimental-webgl', glOptions);
@@ -212,51 +221,6 @@
       gl.deleteFramebuffer(tempFbo);
       targetCanvas.getContext('2d').setTransform(1, 0, 0, 1, 0, 0);
       return pipelineState;
-    },
-
-    /**
-     * The same as the applyFilter method but with additional logging of WebGL
-     * errors.
-     */
-    applyFiltersDebug: function(filters, source, width, height, targetCanvas, cacheKey) {
-      // The following code is useful when debugging a specific issue but adds ~10x slowdown.
-      var gl = this.gl;
-      var ret = this.applyFilters(filters, source, width, height, targetCanvas, cacheKey);
-      var glError = gl.getError();
-      if (glError !== gl.NO_ERROR) {
-        var errorString = this.glErrorToString(gl, glError);
-        var error = new Error('WebGL Error ' + errorString);
-        error.glErrorCode = glError;
-        throw error;
-      }
-      return ret;
-    },
-
-    glErrorToString: function(context, errorCode) {
-      if (!context) {
-        return 'Context undefined for error code: ' + errorCode;
-      }
-      else if (typeof errorCode !== 'number') {
-        return 'Error code is not a number';
-      }
-      switch (errorCode) {
-        case context.NO_ERROR:
-          return 'NO_ERROR';
-        case context.INVALID_ENUM:
-          return 'INVALID_ENUM';
-        case context.INVALID_VALUE:
-          return 'INVALID_VALUE';
-        case context.INVALID_OPERATION:
-          return 'INVALID_OPERATION';
-        case context.INVALID_FRAMEBUFFER_OPERATION:
-          return 'INVALID_FRAMEBUFFER_OPERATION';
-        case context.OUT_OF_MEMORY:
-          return 'OUT_OF_MEMORY';
-        case context.CONTEXT_LOST_WEBGL:
-          return 'CONTEXT_LOST_WEBGL';
-        default:
-          return 'UNKNOWN_ERROR';
-      }
     },
 
     /**
@@ -352,9 +316,11 @@
       if (this.gpuInfo) {
         return this.gpuInfo;
       }
-      var gl = this.gl;
+      var gl = this.gl, gpuInfo = { renderer: '', vendor: '' };
+      if (!gl) {
+        return gpuInfo;
+      }
       var ext = gl.getExtension('WEBGL_debug_renderer_info');
-      var gpuInfo = { renderer: '', vendor: '' };
       if (ext) {
         var renderer = gl.getParameter(ext.UNMASKED_RENDERER_WEBGL);
         var vendor = gl.getParameter(ext.UNMASKED_VENDOR_WEBGL);

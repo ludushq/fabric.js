@@ -10,12 +10,6 @@
     return;
   }
 
-  var stateProperties = fabric.Object.prototype.stateProperties.concat();
-  stateProperties.push('rx', 'ry');
-
-  var cacheProperties = fabric.Object.prototype.cacheProperties.concat();
-  cacheProperties.push('rx', 'ry');
-
   /**
    * Rectangle class
    * @class fabric.Rect
@@ -30,7 +24,7 @@
      * as well as for history (undo/redo) purposes
      * @type Array
      */
-    stateProperties: stateProperties,
+    stateProperties: fabric.Object.prototype.stateProperties.concat('rx', 'ry'),
 
     /**
      * Type of an object
@@ -53,7 +47,7 @@
      */
     ry:   0,
 
-    cacheProperties: cacheProperties,
+    cacheProperties: fabric.Object.prototype.cacheProperties.concat('rx', 'ry'),
 
     /**
      * Constructor
@@ -84,11 +78,8 @@
      */
     _render: function(ctx) {
 
-      // optimize 1x1 case (used in spray brush)
-      if (this.width === 1 && this.height === 1) {
-        ctx.fillRect(-0.5, -0.5, 1, 1);
-        return;
-      }
+      // 1x1 case (used in spray brush) optimization was removed because
+      // with caching and higher zoom level this makes more damage than help
 
       var rx = this.rx ? Math.min(this.rx, this.width / 2) : 0,
           ry = this.ry ? Math.min(this.ry, this.height / 2) : 0,
@@ -150,23 +141,18 @@
     /* _TO_SVG_START_ */
     /**
      * Returns svg representation of an instance
-     * @param {Function} [reviver] Method for further parsing of svg representation.
-     * @return {String} svg representation of an instance
+     * @return {Array} an array of strings with the specific svg representation
+     * of the instance
      */
-    toSVG: function(reviver) {
-      var markup = this._createBaseSVGMarkup(), x = -this.width / 2, y = -this.height / 2;
-      markup.push(
-        '<rect ', this.getSvgId(),
+    _toSVG: function() {
+      var x = -this.width / 2, y = -this.height / 2;
+      return [
+        '<rect ', 'COMMON_PARTS',
         'x="', x, '" y="', y,
-        '" rx="', this.get('rx'), '" ry="', this.get('ry'),
+        '" rx="', this.rx, '" ry="', this.ry,
         '" width="', this.width, '" height="', this.height,
-        '" style="', this.getSvgStyles(),
-        '" transform="', this.getSvgTransform(),
-        this.getSvgTransformMatrix(), '"',
-        this.addPaintOrder(),
-        '/>\n');
-
-      return reviver ? reviver(markup.join('')) : markup.join('');
+        '" />\n'
+      ];
     },
     /* _TO_SVG_END_ */
   });
@@ -198,6 +184,8 @@
 
     parsedAttributes.left = parsedAttributes.left || 0;
     parsedAttributes.top  = parsedAttributes.top  || 0;
+    parsedAttributes.height  = parsedAttributes.height || 0;
+    parsedAttributes.width  = parsedAttributes.width || 0;
     var rect = new fabric.Rect(extend((options ? fabric.util.object.clone(options) : { }), parsedAttributes));
     rect.visible = rect.visible && rect.width > 0 && rect.height > 0;
     callback(rect);
